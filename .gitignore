@@ -35,6 +35,10 @@ venv/
 ENV/
 env/
 
+# Various ext
+.txt
+.pub
+
 # IDE
 .vscode/
 .idea/
