@@ -1343,43 +1343,43 @@ def get_common_dates(Ft, Dt):
 
 # suggest some methods to obtain the signficant values for correlation calculated using the
 # xarray function .corr write the code adding also the code for the calculation of the p-values
-def calculate_significance(corr, n, alpha=0.05):
-    """
-    Calculate the significance of correlation coefficients
-    using the Fisher Z-transformation and mask non-significant values.
+# def calculate_significance(corr, n, alpha=0.05):
+#     """
+#     Calculate the significance of correlation coefficients
+#     using the Fisher Z-transformation and mask non-significant values.
 
-    Parameters
-    ----------
-    corr : xarray.DataArray
-        Correlation coefficients.
-    n : int
-        Sample size.
-    alpha : float, optional
-        Significance level (default is 0.05).
+#     Parameters
+#     ----------
+#     corr : xarray.DataArray
+#         Correlation coefficients.
+#     n : int
+#         Sample size.
+#     alpha : float, optional
+#         Significance level (default is 0.05).
         
-    Returns
-    -------
-    significant_corr : xarray.DataArray
-        Correlation coefficients with non-significant values masked as NaN.
-    p_values : xarray.DataArray
-        P-values for the correlation coefficients.
-    """
-    # Calculate Z-scores using Fisher Z-transformation
-    z = 0.5 * np.log((1 + corr) / (1 - corr))
+#     Returns
+#     -------
+#     significant_corr : xarray.DataArray
+#         Correlation coefficients with non-significant values masked as NaN.
+#     p_values : xarray.DataArray
+#         P-values for the correlation coefficients.
+#     """
+#     # Calculate Z-scores using Fisher Z-transformation
+#     z = 0.5 * np.log((1 + corr) / (1 - corr))
     
-    # Calculate standard error
-    se = 1 / np.sqrt(n - 3)
+#     # Calculate standard error
+#     se = 1 / np.sqrt(n - 3)
     
-    # Calculate Z-scores for significance testing
-    z_scores = z / se
+#     # Calculate Z-scores for significance testing
+#     z_scores = z / se
     
-    # Calculate p-values
-    p_values = 2 * (1 - stats.norm.cdf(np.abs(z_scores)))
+#     # Calculate p-values
+#     p_values = 2 * (1 - stats.norm.cdf(np.abs(z_scores)))
     
-    # Mask non-significant values (retain sign of correlation)
-    significant_corr = corr.where(p_values < alpha)
+#     # Mask non-significant values (retain sign of correlation)
+#     significant_corr = corr.where(p_values < alpha)
     
-    return significant_corr, p_values
+#     return significant_corr, p_values
 
 
 
@@ -1427,3 +1427,216 @@ def calculate_significance(corr: xr.DataArray,
 
     return sig_corr, p
 
+
+def csv_to_latex_table(csv_file, row_filter_col='Exp', row_filter_value='AC', row_label_col='Subcase', output_file=None, decimal_places=4, bold_extreme=None):
+    '''
+    Read a CSV file and write a LaTeX table selecting specific rows.
+    
+    Selects rows where a specified column contains a specific filter value (e.g., 'AC' for model experiments) 
+    and uses a specified column for row labels. Extracts month columns (M0, M1, ..., M12 or until available).
+    Always includes rows for Persistence (PE) and GCM (DY) at the bottom.
+    
+    Parameters
+    ==========
+    
+    csv_file : string
+        Path to the CSV file to read
+        
+    row_filter_col : string
+        Column name to use for filtering rows (default: 'Exp')
+        
+    row_filter_value : string
+        Value to match in the row_filter_col to select rows (default: 'AC')
+        
+    row_label_col : string
+        Column name to use for row labels in the table (default: 'Subcase')
+        
+    output_file : string or None
+        Path to write the LaTeX table. If None, generates a default filename from the input CSV
+        
+    decimal_places : int
+        Number of decimal places to round values to (default: 4)
+        
+    bold_extreme : None, 'max', or 'min'
+        If 'max', bold the maximum value in each column.
+        If 'min', bold the minimum value in each column.
+        If None, no values are bolded (default: None)
+        
+    Returns
+    =======
+    
+    latex_table : string
+        LaTeX formatted table
+        
+    Examples
+    ========
+    
+    >>> table = csv_to_latex_table('error_scores.csv', row_filter_col='Exp', 
+    ...                            row_filter_value='AC', row_label_col='Subcase',
+    ...                            decimal_places=3, bold_extreme='max')
+    >>> print(table)
+    
+    '''
+    
+    # Define local escape function for LaTeX special characters
+    def escape_latex(text):
+        """Remove problematic characters and escape LaTeX special characters in text."""
+        # Characters to remove entirely
+        chars_to_remove = ['[', ']', "'", '"', '{', '}']
+        result = str(text)
+        for char in chars_to_remove:
+            result = result.replace(char, '')
+        
+        # LaTeX special characters to escape
+        special_chars = {
+            '\\': '\\textbackslash{}',
+            '$': '\\$',
+            '&': '\\&',
+            '%': '\\%',
+            '#': '\\#',
+            '_': '\\_',
+            '^': '\\^{}',
+            '~': '\\textasciitilde{}',
+        }
+        for char, escaped in special_chars.items():
+            result = result.replace(char, escaped)
+        return result
+    
+    # Read the CSV file
+    df = pd.read_csv(csv_file, index_col=0)
+    
+    # Find all month columns (M0, M1, M2, ...)
+    month_cols = [col for col in df.columns if col.startswith('M') and col[1:].isdigit()]
+    # Sort them by the numeric part
+    month_cols = sorted(month_cols, key=lambda x: int(x[1:]))
+    
+    # Remove M0 (Lead 0) column
+    month_cols = [col for col in month_cols if col != 'M0']
+    
+    # Filter rows that contain the specified filter value (as a word boundary, not substring)
+    # Use regex to match the filter value as a prefix followed by a dash or dash+word
+    pattern = f'^{row_filter_value}(-|$)'
+    mask = df[row_filter_col].astype(str).str.contains(pattern, na=False, regex=True)
+    result_df = df[mask]
+    
+    # Sort AC rows by the row_label_col, numerically if possible
+    try:
+        # Try to convert to numeric for sorting
+        result_df = result_df.copy()
+        result_df['_sort_key'] = pd.to_numeric(result_df[row_label_col], errors='coerce')
+        result_df = result_df.sort_values(by='_sort_key', na_position='last')
+        result_df = result_df.drop(columns=['_sort_key'])
+    except:
+        # Fall back to alphabetical sorting if numeric conversion fails
+        result_df = result_df.sort_values(by=row_label_col)
+    
+    # Extract Persistence (PE) and GCM (DY) rows - only take the first occurrence of each
+    pe_mask = df[row_filter_col].astype(str).str.contains('PE', na=False, regex=False)
+    dy_mask = df[row_filter_col].astype(str).str.contains('DY', na=False, regex=False)
+    
+    pe_row = df[pe_mask].iloc[[0]] if pe_mask.any() else pd.DataFrame()
+    dy_row = df[dy_mask].iloc[[0]] if dy_mask.any() else pd.DataFrame()
+    
+    # Combine all rows: sorted AC rows + PE row + DY row
+    combined_df = pd.concat([result_df, pe_row, dy_row], ignore_index=False)
+    
+    # Extract only month columns
+    month_data = combined_df[month_cols]
+    
+    # Round to specified decimal places, handling NaN values
+    month_data = month_data.applymap(lambda x: np.nan if pd.isna(x) else round(float(x), decimal_places))
+    
+    # Find extremes per column if requested (only considering AC rows, not PE/DY)
+    extremes_per_col = {}
+    if bold_extreme in ['max', 'min']:
+        ac_month_data = result_df[month_cols].applymap(lambda x: np.nan if pd.isna(x) else round(float(x), decimal_places))
+        for col in month_cols:
+            col_values = ac_month_data[col].dropna()
+            if len(col_values) > 0:
+                if bold_extreme == 'max':
+                    extremes_per_col[col] = col_values.max()
+                else:  # 'min'
+                    extremes_per_col[col] = col_values.min()
+    
+    # Build LaTeX table
+    latex_lines = []
+    
+    # Header
+    latex_lines.append('\\begin{table}[h]')
+    latex_lines.append('\\makebox[\\textwidth][c]{%')
+    
+    # Column specification
+    n_cols = len(month_cols) + 1  # +1 for row label
+    col_spec = '|c' + ('|c' * len(month_cols)) + '|'
+    latex_lines.append(f'\\begin{{tabular}}{{{col_spec}}}')
+    latex_lines.append('\\hline')
+    
+    # Title row with multicolumn for Lead Months spanning all columns
+    title_row = f'\\multicolumn{{{len(month_cols) + 1}}}{{|c|}}{{Lead Months}} \\\\'
+    latex_lines.append(title_row)
+    latex_lines.append('\\hline')
+    
+    # Header row with month numbers
+    header = row_label_col
+    for col in month_cols:
+        month_num = col[1:]  # Extract numeric part
+        header += f' & {month_num}'
+    header += ' \\\\'
+    latex_lines.append(header)
+    latex_lines.append('\\hline')
+    
+    # Data rows
+    for idx, row in month_data.iterrows():
+        # Get the label from the combined dataframe
+        label = combined_df.loc[idx, row_filter_col]
+        
+        # Determine row label based on the row_label_col value
+        if 'PE' in str(label):
+            row_label = 'PERS'
+        elif 'DY' in str(label):
+            row_label = 'GCM'
+        else:
+            # Use the row_label_col value as the row label (e.g., Subcase column)
+            row_label = escape_latex(str(combined_df.loc[idx, row_label_col]))
+        
+        row_str = f'\\small {row_label}'
+        for col, val in zip(month_cols, row):
+            if pd.isna(val):
+                row_str += ' & '
+            else:
+                # Check if this value should be bolded (only for AC rows)
+                if col in extremes_per_col and val == extremes_per_col[col] and 'PE' not in str(label) and 'DY' not in str(label):
+                    row_str += f' & \\textbf{{{val}}}'
+                else:
+                    row_str += f' & {val}'
+        row_str += ' \\\\'
+        latex_lines.append(row_str)
+    
+    latex_lines.append('\\hline')
+    latex_lines.append('\\end{tabular}')
+    latex_lines.append('}%')
+    latex_lines.append('\\vspace{0.3cm}')  # Add vertical space before caption
+    
+    # Add caption
+    caption = f"Skill scores for {row_filter_value} experiments across lead months (M1–M12). "
+    caption += f"Model configurations are shown in the upper rows, with Persistence and GCM baseline forecasts provided at the bottom for reference. "
+    if bold_extreme in ['max', 'min']:
+        caption += f"Optimal values are highlighted in bold."
+    latex_lines.append(f'\\caption{{{caption}}}')
+    
+    latex_lines.append('\\end{table}')
+    
+    latex_table = '\n'.join(latex_lines)
+    
+    # Generate default output filename if not specified
+    if output_file is None:
+        # Extract filename from csv_file without extension and add .tex
+        base_name = os.path.splitext(os.path.basename(csv_file))[0]
+        output_file = f"{base_name}_table.tex"
+    
+    # Write to file
+    with open(output_file, 'w') as f:
+        f.write(latex_table)
+    print(f"LaTeX table written to {output_file}")
+    
+    return latex_table

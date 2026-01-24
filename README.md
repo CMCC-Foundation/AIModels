@@ -41,7 +41,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-See example notebooks and `transformer_example.py` for usage demonstrations.
+See example notebooks and `Notebook` folder for examples of usage. The notebook will require ERA5 monthly mean data in netcdf format as input data. The input functions in AIModels will require a naming convention for the ERA5 monthly mean files such that a U850 field, for instance has to be named as U_850_V5.nc and surface fields will repeat as SST_SST_V5.nc.
 
 ## License
 
