@@ -51,6 +51,9 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
+Notebooks/
+!Notebooks/
+!Notebooks/DeepSeason.ipynb
 
 # Data
 *.nc
